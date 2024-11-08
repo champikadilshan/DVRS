@@ -1,0 +1,21 @@
+{
+  "name": "vulnerability-scraper-backend",
+  "version": "1.0.0",
+  "description": "Backend service for vulnerability scraping",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "playwright": "^1.48.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
