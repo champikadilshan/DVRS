@@ -22,6 +22,9 @@ import {
   DescribeImageScanFindingsCommand,
 } from '@aws-sdk/client-ecr';
 
+// 1. Add this import at the top with your other imports
+import ImageDetailsModal from './ImageDetailsModal';
+
 const VulnerabilitySummary = ({ scanResults }) => {
   // Define all possible severities with their display properties
   const severityLevels = [
@@ -250,6 +253,8 @@ const RepositoryAnalysis = ({ repositoryName }) => {
   const [scanResults, setScanResults] = useState({});
   const [selectedImage, setSelectedImage] = useState(null);
   const awsCredentials = useAuthStore((state) => state.awsCredentials);
+  // 2. Add this new state with your other useState declarations
+  const [selectedModalImage, setSelectedModalImage] = useState(null);
 
   const ecrClient = new ECRClient({
     region: awsCredentials.region,
@@ -258,6 +263,19 @@ const RepositoryAnalysis = ({ repositoryName }) => {
       secretAccessKey: awsCredentials.secretAccessKey,
     },
   });
+
+  // 3. Add this new function with your other functions
+  const handleRunScraper = async (image) => {
+    try {
+      // Your web scraper logic here
+      console.log('Running scraper for image:', image);
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return true;
+    } catch (error) {
+      throw new Error('Failed to run web scraper: ' + error.message);
+    }
+  };
 
   const fetchImages = async () => {
     setLoading(true);
@@ -437,7 +455,7 @@ const RepositoryAnalysis = ({ repositoryName }) => {
                 <div
                   key={image.imageDigest}
                   onClick={() => setSelectedImage(image)}
-                  className={`p-4 rounded-xl border transition-allduration-200 cursor-pointer ${
+                  className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
                     selectedImage?.imageDigest === image.imageDigest
                       ? 'border-blue-200 bg-blue-50/50'
                       : 'border-gray-200/50 bg-white/50 hover:bg-gray-50/50'
@@ -464,7 +482,18 @@ const RepositoryAnalysis = ({ repositoryName }) => {
                         {image.imageDigest.substring(0, 20)}...
                       </p>
                     </div>
-                    <div className="flex items-center">
+                    {/* 5. Replace or update the existing action buttons section */}
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedModalImage(image);
+                        }}
+                        className="text-blue-600 hover:text-blue-700 font-medium text-sm px-3 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                      >
+                        View Details
+                      </button>
+                      {/* Keep your existing scan status indicators */}
                       {scanResults[image.imageDigest] ? (
                         <div className="flex items-center">
                           {scanResults[image.imageDigest].findings.length >
@@ -625,6 +654,16 @@ const RepositoryAnalysis = ({ repositoryName }) => {
           )}
         </div>
       </div>
+      {selectedModalImage && (
+        <ImageDetailsModal
+          isOpen={!!selectedModalImage}
+          onClose={() => setSelectedModalImage(null)}
+          image={selectedModalImage}
+          scanResults={scanResults}
+          repositoryName={repositoryName}
+          onRunScraper={handleRunScraper}
+        />
+      )}
     </div>
   );
 };
