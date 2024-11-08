@@ -45,15 +45,17 @@ const AWSAuthForm = () => {
   const [success, setSuccess] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
+  // Update the regions array
   const regions = [
     { value: 'us-east-1', label: 'US East (N. Virginia)' },
     { value: 'us-east-2', label: 'US East (Ohio)' },
     { value: 'us-west-1', label: 'US West (N. California)' },
     { value: 'us-west-2', label: 'US West (Oregon)' },
-    { value: 'eu-west-1', label: 'Europe (Ireland)' },
-    { value: 'eu-central-1', label: 'Europe (Frankfurt)' },
+    { value: 'ap-south-1', label: 'Asia Pacific (Mumbai)' }, // Added Mumbai region
     { value: 'ap-southeast-1', label: 'Asia Pacific (Singapore)' },
     { value: 'ap-southeast-2', label: 'Asia Pacific (Sydney)' },
+    { value: 'eu-west-1', label: 'Europe (Ireland)' },
+    { value: 'eu-central-1', label: 'Europe (Frankfurt)' },
   ];
 
   const handleInputChange = (e) => {
