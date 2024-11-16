@@ -136,6 +136,14 @@ const RepositoryList = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
                       onClick={() =>
+                        navigate(`/repositories/${repo.repositoryName}/analyze`)
+                      }
+                      className="text-blue-600 hover:text-blue-900 mr-4"
+                    >
+                      Analyze Repository
+                    </button>
+                    <button
+                      onClick={() =>
                         navigate(`/repositories/${repo.repositoryName}`)
                       }
                       className="text-blue-600 hover:text-blue-900 mr-4"
