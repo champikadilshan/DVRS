@@ -13,6 +13,9 @@ app.use(express.json());
 
 let browser = null;
 
+const StackOverflowScraper = require('./services/scraping/stackoverflowScraper');
+let stackoverflowScraper = null;
+
 async function ensureDataDirectory() {
   const dataDir = path.join(__dirname, 'data');
   const screenshotsDir = path.join(dataDir, 'screenshots');
@@ -22,15 +25,17 @@ async function ensureDataDirectory() {
 }
 
 async function ensureBrowserInstalled() {
-  try {
-      if (!browser) {
-          browser = await chromium.launch({
-              headless: false,
-              slowMo: 50,
-              args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process']
-          });
-      }
-  } catch (error) {
+    try {
+        if (!browser) {
+            browser = await chromium.launch({
+                headless: false,
+                slowMo: 50,
+                args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process']
+            });
+            // Initialize StackOverflow scraper with the browser instance
+            stackoverflowScraper = new StackOverflowScraper(browser);
+        }
+    } catch (error) {
       if (error.message.includes("Executable doesn't exist")) {
           console.log('Installing browsers...');
           try {
@@ -229,6 +234,34 @@ app.post('/api/scrape', async (req, res) => {
   }
 });
 
+// Add new endpoint for StackOverflow scraping
+app.post('/api/scrape/stackoverflow', async (req, res) => {
+    const { query } = req.body;
+
+    if (!query) {
+        return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    try {
+        await ensureBrowserInstalled();
+        const { dataDir } = await ensureDataDirectory();
+        
+        const result = await stackoverflowScraper.scrapeStackOverflow(query, dataDir);
+        
+        res.json({
+            success: true,
+            data: result.data,
+            savedAs: result.savedAs
+        });
+    } catch (error) {
+        console.error('StackOverflow scraping error:', error);
+        res.status(500).json({
+            error: 'Failed to scrape StackOverflow',
+            message: error.message
+        });
+    }
+});
+
 
 // Endpoint to get all saved vulnerability data
 app.get('/api/vulnerabilities', async (req, res) => {
@@ -273,9 +306,11 @@ app.get('/api/vulnerability/:cveId', async (req, res) => {
     }
 });
 
+// Modify your existing cleanup endpoint to handle both scrapers
 app.post('/api/cleanup', async (req, res) => {
     try {
         if (browser) {
+            stackoverflowScraper = null;
             await browser.close();
             browser = null;
         }
@@ -284,6 +319,7 @@ app.post('/api/cleanup', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 app.use((err, req, res, next) => {
     console.error('Server error:', err);
