@@ -1,5 +1,6 @@
 // src/components/repositories/ImageDetailsModal.jsx
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
@@ -22,6 +23,8 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { vulnerabilityScraper } from '../../services/scraping/vulnerabilityScraper';
+
+
 
 // Source options with enabled property
 const SCRAPING_SOURCES = [
@@ -200,6 +203,7 @@ const ImageDetailsModal = ({
   scanResults,
   repositoryName,
 }) => {
+  const navigate = useNavigate(); // Add this line here
   const [isScraperRunning, setIsScraperRunning] = useState(false);
   const [scraperError, setScraperError] = useState(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -241,65 +245,64 @@ const ImageDetailsModal = ({
     });
   };
 
-  const handleRunScraper = async (finding) => {
-    console.log('Starting scrape with sources:', selectedSources);
-    console.log('Finding:', finding);
-  
-    if (selectedSources.length === 0) {
-      setScraperError('Please select at least one source');
-      return;
-    }
-  
-    setIsScraperRunning(true);
-    setScraperError(null);
-    setSelectedFinding(finding);
-  
-    try {
-      const results = {};
-  
-      // Handle official documentation scraping
-      if (selectedSources.includes('official')) {
-        console.log('Starting official documentation scrape...');
-        console.log('URI:', finding.uri);
-        
-        if (!finding.uri) {
-          console.warn('No URI found for official documentation');
-          throw new Error('No vulnerability URI available for official documentation');
-        }
-  
-        const officialResult = await vulnerabilityScraper.scrapeVulnerabilityDetails(finding.uri);
-        console.log('Official scraping result:', officialResult);
-        
-        if (officialResult) {
-          results.official = officialResult;
-        }
-      }
-  
-      // Handle StackOverflow scraping
-      if (selectedSources.includes('stackoverflow')) {
-        console.log('Starting Stack Overflow scrape...');
-        const soQuery = `${finding.name} vulnerability`;
-        const stackoverflowResult = await vulnerabilityScraper.scrapeStackOverflow(soQuery);
-        
-        if (stackoverflowResult) {
-          results.stackoverflow = stackoverflowResult;
-        }
-      }
-  
-      console.log('Final results:', results);
+  // Update handleRunScraper in ImageDetailsModal.jsx
+const handleRunScraper = async (finding) => {
+  console.log('Starting scrape with sources:', selectedSources);
+  console.log('Finding:', finding);
+
+  if (selectedSources.length === 0) {
+    setScraperError('Please select at least one source');
+    return;
+  }
+
+  setIsScraperRunning(true);
+  setScraperError(null);
+  setSelectedFinding(finding);
+
+  try {
+    let logFileId;
+
+    // Handle official documentation scraping
+    if (selectedSources.includes('official')) {
+      console.log('Starting official documentation scrape...');
       
-      setScrapedResults(prevResults => ({
-        ...prevResults,
-        [finding.name]: results
-      }));
-  
-    } catch (error) {
-      console.error('Scraping error:', error);
-      setScraperError(`Failed to scrape: ${error.message}`);
-    } finally {
-      setIsScraperRunning(false);
+      if (!finding.uri) {
+        console.warn('No URI found for official documentation');
+        throw new Error('No vulnerability URI available for official documentation');
+      }
+
+      const officialResult = await vulnerabilityScraper.scrapeVulnerabilityDetails(finding.uri);
+      console.log('Official scraping result:', officialResult);
+      
+      if (officialResult?.savedAs) {
+        logFileId = officialResult.savedAs.split('.')[0]; // Get filename without extension
+      }
     }
-  };
+
+    // Handle StackOverflow scraping
+    if (selectedSources.includes('stackoverflow')) {
+      console.log('Starting Stack Overflow scrape...');
+      const soQuery = `${finding.name} vulnerability`;
+      const stackoverflowResult = await vulnerabilityScraper.scrapeStackOverflow(soQuery);
+      
+      if (stackoverflowResult?.savedAs) {
+        logFileId = stackoverflowResult.savedAs.split('.')[0];
+      }
+    }
+
+    // Close modal and navigate to logs page
+    if (logFileId) {
+      onClose(); // Close the modal
+      navigate(`/logs/${logFileId}`); // Navigate to logs page
+    }
+
+  } catch (error) {
+    console.error('Scraping error:', error);
+    setScraperError(`Failed to scrape: ${error.message}`);
+  } finally {
+    setIsScraperRunning(false);
+  }
+};
 
   const copyDigest = async () => {
     await navigator.clipboard.writeText(image.imageDigest);

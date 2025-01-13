@@ -320,6 +320,31 @@ app.post('/api/cleanup', async (req, res) => {
     }
 });
 
+// Add this endpoint to your server.js
+app.get('/api/logs/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { dataDir } = await ensureDataDirectory();
+      
+      // Find the file that matches the ID pattern
+      const files = await fs.readdir(dataDir);
+      const logFile = files.find(file => file.includes(id) && file.endsWith('.json'));
+      
+      if (!logFile) {
+        return res.status(404).json({ error: 'Log file not found' });
+      }
+      
+      const filePath = path.join(dataDir, logFile);
+      const fileContent = await fs.readFile(filePath, 'utf-8');
+      const logData = JSON.parse(fileContent);
+      
+      res.json(logData);
+    } catch (error) {
+      console.error('Error reading log file:', error);
+      res.status(500).json({ error: 'Failed to retrieve log data' });
+    }
+  });
+
 
 app.use((err, req, res, next) => {
     console.error('Server error:', err);

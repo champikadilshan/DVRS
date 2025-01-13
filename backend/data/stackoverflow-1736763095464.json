@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "scrapeDate": "2025-01-05T07:26:06.010Z",
+    "scrapeDate": "2025-01-13T10:11:35.464Z",
     "sourceUrl": "https://stackoverflow.com/questions/77957616/i-cant-find-the-packages-that-appear-using-grype-and-not-found-inside-docker-im/79149340?r=SearchResults#79149340",
-    "searchQuery": "CVE CVE-2024-9143 vulnerability vulnerability"
+    "searchQuery": "CVE-2024-9143 vulnerability"
   },
   "title": "Join Stack Overflow",
   "question": "This is what is inside the docker container that runs\ndocker run -it alpine:latest sh \n/ # ls -lh /var/lib/apk/\ntotal 0      \n\nwhen i used grype\n\nI use grype to run scan on the alpine docker image\n\ngrype alpine:latest\n\nNAME           INSTALLED   FIXED-IN  TYPE  VULNERABILITY   SEVERITY   \nlibcrypto3     3.1.4-r2    3.1.4-r5  apk   CVE-2024-0727   Medium    \nlibcrypto3     3.1.4-r2    3.1.4-r3  apk   CVE-2023-6129   Medium    \nlibcrypto3     3.1.4-r2    3.1.4-r4  apk   CVE-2023-6237   Unknown   \nlibssl3        3.1.4-r2    3.1.4-r5  apk   CVE-2024-0727   Medium    \nlibssl3        3.1.4-r2    3.1.4-r3  apk   CVE-2023-6129   Medium    \nlibssl3        3.1.4-r2    3.1.4-r4  apk   CVE-2023-6237   Unknown",
