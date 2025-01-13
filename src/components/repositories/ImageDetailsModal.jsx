@@ -246,63 +246,73 @@ const ImageDetailsModal = ({
   };
 
   // Update handleRunScraper in ImageDetailsModal.jsx
-const handleRunScraper = async (finding) => {
-  console.log('Starting scrape with sources:', selectedSources);
-  console.log('Finding:', finding);
-
-  if (selectedSources.length === 0) {
-    setScraperError('Please select at least one source');
-    return;
-  }
-
-  setIsScraperRunning(true);
-  setScraperError(null);
-  setSelectedFinding(finding);
-
-  try {
-    let logFileId;
-
-    // Handle official documentation scraping
-    if (selectedSources.includes('official')) {
-      console.log('Starting official documentation scrape...');
-      
-      if (!finding.uri) {
-        console.warn('No URI found for official documentation');
-        throw new Error('No vulnerability URI available for official documentation');
-      }
-
-      const officialResult = await vulnerabilityScraper.scrapeVulnerabilityDetails(finding.uri);
-      console.log('Official scraping result:', officialResult);
-      
-      if (officialResult?.savedAs) {
-        logFileId = officialResult.savedAs.split('.')[0]; // Get filename without extension
-      }
+  const handleRunScraper = async (finding) => {
+    console.log('Starting scrape with sources:', selectedSources);
+    console.log('Finding:', finding);
+  
+    if (selectedSources.length === 0) {
+      setScraperError('Please select at least one source');
+      return;
     }
-
-    // Handle StackOverflow scraping
-    if (selectedSources.includes('stackoverflow')) {
-      console.log('Starting Stack Overflow scrape...');
-      const soQuery = `${finding.name} vulnerability`;
-      const stackoverflowResult = await vulnerabilityScraper.scrapeStackOverflow(soQuery);
-      
-      if (stackoverflowResult?.savedAs) {
-        logFileId = stackoverflowResult.savedAs.split('.')[0];
+  
+    setIsScraperRunning(true);
+    setScraperError(null);
+    setSelectedFinding(finding);
+  
+    try {
+      let logFileId;
+  
+      // Handle official documentation scraping
+      if (selectedSources.includes('official')) {
+        console.log('Starting official documentation scrape...');
+        
+        if (!finding.uri) {
+          console.warn('No URI found for official documentation');
+          throw new Error('No vulnerability URI available for official documentation');
+        }
+  
+        const officialResult = await vulnerabilityScraper.scrapeVulnerabilityDetails(finding.uri);
+        console.log('Official scraping result:', officialResult);
+        
+        if (officialResult?.data?.savedAs) {
+          // For official docs, the filename might be in data.savedAs
+          logFileId = officialResult.data.savedAs.split('.')[0];
+        } else if (officialResult?.savedAs) {
+          // Direct savedAs property
+          logFileId = officialResult.savedAs.split('.')[0];
+        }
       }
+  
+      // Handle StackOverflow scraping
+      if (selectedSources.includes('stackoverflow')) {
+        console.log('Starting Stack Overflow scrape...');
+        const soQuery = `${finding.name} vulnerability`;
+        const stackoverflowResult = await vulnerabilityScraper.scrapeStackOverflow(soQuery);
+        
+        if (stackoverflowResult?.data?.savedAs) {
+          logFileId = stackoverflowResult.data.savedAs.split('.')[0];
+        } else if (stackoverflowResult?.savedAs) {
+          logFileId = stackoverflowResult.savedAs.split('.')[0];
+        }
+      }
+  
+      // Close modal and navigate to logs page
+      if (logFileId) {
+        console.log('Navigating to logs with ID:', logFileId);
+        onClose(); // Close the modal
+        navigate(`/logs/${logFileId}`); // Navigate to logs page
+      } else {
+        console.warn('No log file ID found in the scraping result');
+        setScraperError('Could not find the log file reference');
+      }
+  
+    } catch (error) {
+      console.error('Scraping error:', error);
+      setScraperError(`Failed to scrape: ${error.message}`);
+    } finally {
+      setIsScraperRunning(false);
     }
-
-    // Close modal and navigate to logs page
-    if (logFileId) {
-      onClose(); // Close the modal
-      navigate(`/logs/${logFileId}`); // Navigate to logs page
-    }
-
-  } catch (error) {
-    console.error('Scraping error:', error);
-    setScraperError(`Failed to scrape: ${error.message}`);
-  } finally {
-    setIsScraperRunning(false);
-  }
-};
+  };
 
   const copyDigest = async () => {
     await navigator.clipboard.writeText(image.imageDigest);

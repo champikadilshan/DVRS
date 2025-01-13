@@ -208,29 +208,30 @@ app.post('/api/scrape', async (req, res) => {
 
       // Save both data and screenshot
       const savedFilename = await saveToJson(scrapedData, cveId);
+      console.log('Saved scraping results to:', savedFilename);
 
       // Add delay before closing
-      await delay(5000);
+      await delay(1000);
 
       res.json({
-          success: true,
-          data: {
-              ...scrapedData,
-              savedAs: savedFilename,
-              screenshotPath: path.relative(__dirname, screenshotPath)
-          },
-          message: 'Scraping completed and data saved successfully'
+        success: true,
+        data: {
+          ...scrapedData,
+          savedAs: savedFilename,  // Make sure this is included
+          screenshotPath: path.relative(__dirname, screenshotPath)
+        },
+        message: 'Scraping completed and data saved successfully'
       });
 
   } catch (error) {
-      console.error('Scraping error:', error);
-      res.status(500).json({
-          error: 'Failed to scrape vulnerability details',
-          message: error.message
-      });
+    console.error('Scraping error:', error);
+    res.status(500).json({
+      error: 'Failed to scrape vulnerability details',
+      message: error.message
+    });
   } finally {
-      if (page) await page.close();
-      if (context) await context.close();
+    if (page) await page.close();
+    if (context) await context.close();
   }
 });
 
