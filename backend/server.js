@@ -12,7 +12,7 @@ const path = require('path');
 
 const Tesseract = require('tesseract.js');
 
-
+const aiAnalysisRoutes = require('./routes/aiAnalysis');
 
 
 
@@ -727,3 +727,5 @@ app.listen(PORT, () => {
         .catch((err) => console.error('Failed to ensure browser:', err));
 
 });
+
+app.use('/api', aiAnalysisRoutes);

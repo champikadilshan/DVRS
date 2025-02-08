@@ -3,9 +3,10 @@
 📄 README.md (README.md)
 📁 backend/
   📁 data/
-    📄 CVE-2024-9143-1736763057933.json (backend/data/CVE-2024-9143-1736763057933.json)
+    📄 CVE-2024-9143-1738985832767.json (backend/data/CVE-2024-9143-1738985832767.json)
     📁 screenshots/
-    📄 stackoverflow-1736763095464.json (backend/data/stackoverflow-1736763095464.json)
+    📄 stackoverflow-1738985775363.json (backend/data/stackoverflow-1738985775363.json)
+    📄 stackoverflow-1738985878068.json (backend/data/stackoverflow-1738985878068.json)
   📄 package.json (backend/package.json)
   📄 server.js (backend/server.js)
   📁 services/
@@ -16,6 +17,7 @@
 📄 map-project.js (map-project.js)
 📄 package.json (package.json)
 📄 postcss.config.js (postcss.config.js)
+📄 project-structure.md (project-structure.md)
 📁 public/
 📁 src/
   📄 App.css (src/App.css)
@@ -46,6 +48,8 @@
       📄 Login.jsx (src/pages/auth/Login.jsx)
     📁 dashboard/
       📄 Dashboard.jsx (src/pages/dashboard/Dashboard.jsx)
+    📁 logs/
+      📄 ScrapingLogsPage.jsx (src/pages/logs/ScrapingLogsPage.jsx)
     📁 repositories/
       📄 RepositoryAnalysisPage.jsx (src/pages/repositories/RepositoryAnalysisPage.jsx)
       📄 RepositoryList.jsx (src/pages/repositories/RepositoryList.jsx)
@@ -89,6 +93,7 @@ import { ComponentName } from 'src/components/vulnerability/SourceSelector';
 import { ComponentName } from 'src/main';
 import { ComponentName } from 'src/pages/auth/Login';
 import { ComponentName } from 'src/pages/dashboard/Dashboard';
+import { ComponentName } from 'src/pages/logs/ScrapingLogsPage';
 import { ComponentName } from 'src/pages/repositories/RepositoryAnalysisPage';
 import { ComponentName } from 'src/pages/repositories/RepositoryList';
 import { ComponentName } from 'src/pages/vulnerabilities/VulnerabilityDetailsPage';
