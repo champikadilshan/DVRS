@@ -9,6 +9,12 @@ import {
   Menu,
   X,
   ChevronRight,
+  CheckSquare,
+  BarChart2,
+  Workflow,
+  Plug,
+  Bell,
+  FileText
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 
@@ -55,12 +61,48 @@ const MainLayout = () => {
       description: 'View security findings and reports',
     },
     {
+      name: 'Compliance',
+      icon: CheckSquare,
+      path: '/compliance',
+      description: 'Monitor compliance standards and policies',
+    },
+    {
+      name: 'Analytics',
+      icon: BarChart2,
+      path: '/analytics',
+      description: 'Vulnerability trends and statistics',
+    },
+    {
+      name: 'Automation',
+      icon: Workflow,
+      path: '/automation',
+      description: 'Configure automated scanning rules',
+    },
+    {
+      name: 'Integration',
+      icon: Plug,
+      path: '/integration',
+      description: 'Manage third-party service connections',
+    },
+    {
+      name: 'Alerts',
+      icon: Bell,
+      path: '/alerts',
+      description: 'Configure notification settings',
+    },
+    {
+      name: 'Reports',
+      icon: FileText,
+      path: '/reports',
+      description: 'Generate and view detailed reports',
+    },
+    {
       name: 'Settings',
       icon: Settings,
       path: '/settings',
       description: 'Configure scanner settings',
     },
-  ];
+];
 
   return (
     <div className="h-screen flex bg-[#f5f5f7]">

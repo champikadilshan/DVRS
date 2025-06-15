@@ -7,6 +7,7 @@ import RepositoryList from './pages/repositories/RepositoryList';
 import RepositoryAnalysisPage from './pages/repositories/RepositoryAnalysisPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
+import ScrapingLogsPage from './pages/logs/ScrapingLogsPage';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
                 path="/repositories/:name/analyze"
                 element={<RepositoryAnalysisPage />}
               />
+              <Route path="/logs/:id" element={<ScrapingLogsPage />} />
             </Route>
           </Route>
         </Routes>
