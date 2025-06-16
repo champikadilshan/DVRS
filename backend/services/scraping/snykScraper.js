@@ -46,7 +46,7 @@ class SnykScraper {
             // Extract result links (top 6 results)
             const resultLinks = await page.evaluate(() => {
                 const rows = Array.from(document.querySelectorAll('.vulns-table__container table tbody tr'));
-                return rows.slice(0, 6).map(row => {
+                return rows.slice(0, 1).map(row => {
                     const linkElement = row.querySelector('a');
                     return linkElement ? linkElement.href : null;
                 }).filter(link => link !== null);
