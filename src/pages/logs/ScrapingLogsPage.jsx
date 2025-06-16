@@ -18,7 +18,8 @@ import {
   Brain,
   Upload,
   FileText,
-  Wrench
+  Wrench,
+  ExternalLink
 } from 'lucide-react';
 import axios from 'axios';
 import { aiAnalysisService } from '../../services/ai/aiAnalysisService';
@@ -330,7 +331,7 @@ const DockerfileFixer = ({ logs }) => {
       // Prepare the prompt
       const prompt = `${fileContent.trim()} , This docker file have these CVEs [${cves.join(', ')}] , can you fix it and give me the updated docker file ?`;
 
-      // Send request to the API
+      // Send request directly to your Python API
       const response = await axios.post('http://localhost:8001/api/query', {
         prompt: prompt,
         user_id: 'postman-test'
@@ -753,6 +754,42 @@ const ScrapingLogsPage = () => {
           </div>
 
           <div className="lg:col-span-2 space-y-4">
+            {/* Streamlit App Iframe */}
+            <CollapsibleSection 
+              title="CVE Expert Chat - Live Analysis" 
+              icon={Terminal}
+              defaultOpen={true}
+            >
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm text-gray-600">Streamlit App Running</span>
+                  </div>
+                  <a
+                    href="http://localhost:8502/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                  >
+                    Open in new tab
+                    <ExternalLink className="w-3 h-3 ml-1" />
+                  </a>
+                </div>
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <iframe
+                    src="http://localhost:8502/"
+                    className="w-full h-[700px] border-0" 
+                    title="CVE Expert Streamlit App"
+                    sandbox="allow-same-origin allow-scripts allow-forms allow-top-navigation"
+                  />
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  You can interact with the CVE Expert directly in this embedded view, or open it in a new tab for full screen experience.
+                </div>
+              </div>
+            </CollapsibleSection>
+
             {logs?.data?.findings && (
               <CollapsibleSection 
                 title="Findings" 
