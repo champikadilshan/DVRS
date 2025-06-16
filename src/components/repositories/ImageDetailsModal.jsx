@@ -57,79 +57,51 @@ import { vulnerabilityScraper } from '../../services/scraping/vulnerabilityScrap
 // Source options with enabled property
 
 const SCRAPING_SOURCES = [
-
   {
-
     id: 'official',
-
     name: 'Official Documentation',
-
     icon: BookOpen,
-
     color: 'text-blue-600',
-
     bgColor: 'bg-blue-50',
-
     description: 'Vendor security advisories and official documentation',
-
     enabled: true
-
   },
-
   {
-
     id: 'stackoverflow',
-
     name: 'Stack Overflow',
-
     icon: MessageSquare,
-
     color: 'text-orange-600',
-
     bgColor: 'bg-orange-50',
-
     description: 'Community discussions and solutions',
-
     enabled: true
-
   },
-
   {
-
-    id: 'github',
-
-    name: 'GitHub Issues',
-
-    icon: Code,
-
-    color: 'text-gray-600',
-
-    bgColor: 'bg-gray-50',
-
-    description: 'Related issues and pull requests',
-
-    enabled: false
-
-  },
-
-  {
-
-    id: 'cve',
-
-    name: 'CVE Database',
-
-    icon: Database,
-
+    id: 'snyk', // THIS LINE SHOULD BE ADDED
+    name: 'Snyk Security',
+    icon: Shield,
     color: 'text-purple-600',
-
     bgColor: 'bg-purple-50',
-
-    description: 'Common Vulnerabilities and Exposures details',
-
-    enabled: false
-
+    description: 'Snyk vulnerability database and security insights',
+    enabled: true
   },
-
+  {
+    id: 'github',
+    name: 'GitHub Issues',
+    icon: Code,
+    color: 'text-gray-600',
+    bgColor: 'bg-gray-50',
+    description: 'Related issues and pull requests',
+    enabled: false
+  },
+  {
+    id: 'cve',
+    name: 'CVE Database',
+    icon: Database,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+    description: 'Common Vulnerabilities and Exposures details',
+    enabled: false
+  },
 ];
 
 
@@ -495,138 +467,83 @@ const ImageDetailsModal = ({
   // Update handleRunScraper in ImageDetailsModal.jsx
 
   const handleRunScraper = async (finding) => {
+  console.log('Starting scrape with sources:', selectedSources);
+  console.log('Finding:', finding);
 
-    console.log('Starting scrape with sources:', selectedSources);
+  if (selectedSources.length === 0) {
+    setScraperError('Please select at least one source');
+    return;
+  }
 
-    console.log('Finding:', finding);
+  setIsScraperRunning(true);
+  setScraperError(null);
+  setSelectedFinding(finding);
 
-  
+  try {
+    let logFileId;
 
-    if (selectedSources.length === 0) {
+    // Handle official documentation scraping
+    if (selectedSources.includes('official')) {
+      console.log('Starting official documentation scrape...');
+      
+      if (!finding.uri) {
+        console.warn('No URI found for official documentation');
+        throw new Error('No vulnerability URI available for official documentation');
+      }
 
-      setScraperError('Please select at least one source');
-
-      return;
-
+      const officialResult = await vulnerabilityScraper.scrapeVulnerabilityDetails(finding.uri);
+      console.log('Official scraping result:', officialResult);
+      
+      if (officialResult?.data?.savedAs) {
+        logFileId = officialResult.data.savedAs.split('.')[0];
+      } else if (officialResult?.savedAs) {
+        logFileId = officialResult.savedAs.split('.')[0];
+      }
     }
 
-  
-
-    setIsScraperRunning(true);
-
-    setScraperError(null);
-
-    setSelectedFinding(finding);
-
-  
-
-    try {
-
-      let logFileId;
-
-  
-
-      // Handle official documentation scraping
-
-      if (selectedSources.includes('official')) {
-
-        console.log('Starting official documentation scrape...');
-
-        
-
-        if (!finding.uri) {
-
-          console.warn('No URI found for official documentation');
-
-          throw new Error('No vulnerability URI available for official documentation');
-
-        }
-
-  
-
-        const officialResult = await vulnerabilityScraper.scrapeVulnerabilityDetails(finding.uri);
-
-        console.log('Official scraping result:', officialResult);
-
-        
-
-        if (officialResult?.data?.savedAs) {
-
-          // For official docs, the filename might be in data.savedAs
-
-          logFileId = officialResult.data.savedAs.split('.')[0];
-
-        } else if (officialResult?.savedAs) {
-
-          // Direct savedAs property
-
-          logFileId = officialResult.savedAs.split('.')[0];
-
-        }
-
+    // Handle StackOverflow scraping
+    if (selectedSources.includes('stackoverflow')) {
+      console.log('Starting Stack Overflow scrape...');
+      const soQuery = `${finding.name} vulnerability`;
+      const stackoverflowResult = await vulnerabilityScraper.scrapeStackOverflow(soQuery);
+      
+      if (stackoverflowResult?.data?.savedAs) {
+        logFileId = stackoverflowResult.data.savedAs.split('.')[0];
+      } else if (stackoverflowResult?.savedAs) {
+        logFileId = stackoverflowResult.savedAs.split('.')[0];
       }
-
-  
-
-      // Handle StackOverflow scraping
-
-      if (selectedSources.includes('stackoverflow')) {
-
-        console.log('Starting Stack Overflow scrape...');
-
-        const soQuery = `${finding.name} vulnerability`;
-
-        const stackoverflowResult = await vulnerabilityScraper.scrapeStackOverflow(soQuery);
-
-        
-
-        if (stackoverflowResult?.data?.savedAs) {
-
-          logFileId = stackoverflowResult.data.savedAs.split('.')[0];
-
-        } else if (stackoverflowResult?.savedAs) {
-
-          logFileId = stackoverflowResult.savedAs.split('.')[0];
-
-        }
-
-      }
-
-  
-
-      // Close modal and navigate to logs page
-
-      if (logFileId) {
-
-        console.log('Navigating to logs with ID:', logFileId);
-
-        onClose(); // Close the modal
-
-        navigate(`/logs/${logFileId}`); // Navigate to logs page
-
-      } else {
-
-        console.warn('No log file ID found in the scraping result');
-
-        setScraperError('Could not find the log file reference');
-
-      }
-
-  
-
-    } catch (error) {
-
-      console.error('Scraping error:', error);
-
-      setScraperError(`Failed to scrape: ${error.message}`);
-
-    } finally {
-
-      setIsScraperRunning(false);
-
     }
 
-  };
+    // NEW: Handle Snyk scraping
+    if (selectedSources.includes('snyk')) {
+      console.log('Starting Snyk scrape...');
+      const snykQuery = finding.name; // Use the finding name directly for Snyk
+      const snykResult = await vulnerabilityScraper.scrapeSnyk(snykQuery);
+      
+      if (snykResult?.data?.savedAs) {
+        logFileId = snykResult.data.savedAs.split('.')[0];
+      } else if (snykResult?.savedAs) {
+        logFileId = snykResult.savedAs.split('.')[0];
+      }
+    }
+
+    // Close modal and navigate to logs page
+    if (logFileId) {
+      console.log('Navigating to logs with ID:', logFileId);
+      onClose(); // Close the modal
+      navigate(`/logs/${logFileId}`); // Navigate to logs page
+    } else {
+      console.warn('No log file ID found in the scraping result');
+      setScraperError('Could not find the log file reference');
+    }
+
+  } catch (error) {
+    console.error('Scraping error:', error);
+    setScraperError(`Failed to scrape: ${error.message}`);
+  } finally {
+    setIsScraperRunning(false);
+  }
+};
 
 
 

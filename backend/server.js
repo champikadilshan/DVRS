@@ -30,9 +30,11 @@ let browser = null;
 
 const StackOverflowScraper = require('./services/scraping/stackoverflowScraper');
 
+const SnykScraper = require('./services/scraping/snykScraper');
+
 let stackoverflowScraper = null;
 
-
+let snykScraper = null;
 
 async function ensureDataDirectory() {
 
@@ -51,64 +53,40 @@ async function ensureDataDirectory() {
 
 
 async function ensureBrowserInstalled() {
-
     try {
-
         if (!browser) {
-
             browser = await chromium.launch({
-
                 headless: false,
-
                 slowMo: 50,
-
                 args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process']
-
             });
-
-            // Initialize StackOverflow scraper with the browser instance
-
+            // Initialize scrapers with the browser instance
             stackoverflowScraper = new StackOverflowScraper(browser);
-
+            snykScraper = new SnykScraper(browser); // Add this line
         }
-
     } catch (error) {
-
-      if (error.message.includes("Executable doesn't exist")) {
-
-          console.log('Installing browsers...');
-
-          try {
-
-              execSync('npx playwright install chromium', { stdio: 'inherit' });
-
-              browser = await chromium.launch({
-
-                  headless: false,
-
-                  slowMo: 50,
-
-                  args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process']
-
-              });
-
-          } catch (installError) {
-
-              throw new Error(`Failed to install browser: ${installError.message}`);
-
-          }
-
-      } else {
-
-          throw error;
-
-      }
-
-  }
-
-  return browser;
-
+        if (error.message.includes("Executable doesn't exist")) {
+            console.log('Installing browsers...');
+            try {
+                execSync('npx playwright install chromium', { stdio: 'inherit' });
+                browser = await chromium.launch({
+                    headless: false,
+                    slowMo: 50,
+                    args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process']
+                });
+                // Initialize scrapers after browser installation
+                stackoverflowScraper = new StackOverflowScraper(browser);
+                snykScraper = new SnykScraper(browser); // Add this line
+            } catch (installError) {
+                throw new Error(`Failed to install browser: ${installError.message}`);
+            }
+        } else {
+            throw error;
+        }
+    }
+    return browser;
 }
+
 
 
 
@@ -527,7 +505,33 @@ app.post('/api/scrape/stackoverflow', async (req, res) => {
 });
 
 
+// Add new endpoint for Snyk scraping (add this after the StackOverflow endpoint)
+app.post('/api/scrape/snyk', async (req, res) => {
+    const { query } = req.body;
 
+    if (!query) {
+        return res.status(400).json({ error: 'Search query is required' });
+    }
+
+    try {
+        await ensureBrowserInstalled();
+        const { dataDir } = await ensureDataDirectory();
+        
+        const result = await snykScraper.scrapeSnyk(query, dataDir);
+        
+        res.json({
+            success: true,
+            data: result.data,
+            savedAs: result.savedAs
+        });
+    } catch (error) {
+        console.error('Snyk scraping error:', error);
+        res.status(500).json({
+            error: 'Failed to scrape Snyk',
+            message: error.message
+        });
+    }
+});
 
 
 // Endpoint to get all saved vulnerability data
@@ -618,28 +622,19 @@ app.get('/api/vulnerability/:cveId', async (req, res) => {
 
 // Modify your existing cleanup endpoint to handle both scrapers
 
+// Update the cleanup endpoint to handle all scrapers
 app.post('/api/cleanup', async (req, res) => {
-
     try {
-
         if (browser) {
-
             stackoverflowScraper = null;
-
+            snykScraper = null; // Add this line
             await browser.close();
-
             browser = null;
-
         }
-
         res.json({ success: true });
-
     } catch (error) {
-
         res.status(500).json({ error: error.message });
-
     }
-
 });
 
 
