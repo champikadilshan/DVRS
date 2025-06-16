@@ -329,7 +329,7 @@ const DockerfileFixer = ({ logs }) => {
       }
 
       // Prepare the prompt
-      const prompt = `${fileContent.trim()} , This docker file have these CVEs [${cves.join(', ')}] , can you fix it and give me the updated docker file ?`;
+      const prompt = `${fileContent.trim()} , This docker file have these CVEs [${cves.join(', ')}] , can you fix it and give me the updated docker file ?. If and only if there are no solutions for the CVE, you can add a base image from chainguard or rapidfort.`;
 
       // Send request directly to your Python API
       const response = await axios.post('http://localhost:8001/api/query', {
