@@ -115,7 +115,7 @@ const MainLayout = () => {
         <div className="h-full flex flex-col">
           <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
             <div className="flex items-center space-x-2">
-              <AWSLogo />
+              {/* <AWSLogo /> */}
               {/* <span className="font-medium text-gray-900 ml-2 pl-10">DVRS</span> */}
             </div>
             <button
