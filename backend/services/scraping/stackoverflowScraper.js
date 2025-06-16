@@ -1,7 +1,8 @@
-// services/scraping/stackoverflowScraper.js
+// backend/services/scraping/stackoverflowScraper.js
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs/promises');
+const axios = require('axios');
 
 class StackOverflowScraper {
     constructor(browser) {
@@ -23,29 +24,27 @@ class StackOverflowScraper {
             page = await context.newPage();
 
             // Navigate to Stack Overflow
-            await page.goto('https://stackoverflow.com/');
-            console.log('Navigating to StackOverflow...');
+            const stackOverflowURL = 'https://stackoverflow.com/';
+            console.log(`Navigating to ${stackOverflowURL}...`);
+            await page.goto(stackOverflowURL);
 
             // Search for the query
+            console.log(`Searching for "${searchQuery}"...`);
             await page.fill('input[name="q"]', searchQuery);
             await page.press('input[name="q"]', 'Enter');
 
-            // Wait for search results with timeout and retry logic
-            let retryCount = 0;
-            const maxRetries = 3;
-            while (retryCount < maxRetries) {
-                try {
-                    await page.waitForSelector('.js-post-summaries', { timeout: 20000 });
-                    break;
-                } catch (error) {
-                    retryCount++;
-                    if (retryCount === maxRetries) throw error;
-                    console.log('Retrying to wait for search results...');
-                    await page.reload();
-                }
-            }
+            // Wait for CAPTCHA if any
+            console.log('Please complete any human verification if prompted.');
+            await page.waitForTimeout(10000);
 
-            // Get the first result link
+            // Wait for search results
+            console.log('Waiting for search results...');
+            await page.waitForFunction(() => {
+                const container = document.querySelector('.js-post-summaries');
+                return container && container.children.length > 0;
+            }, { timeout: 60000 });
+
+            // Extract first link only
             const firstLink = await page.evaluate(() => {
                 const resultLink = document.querySelector('.js-post-summaries a');
                 return resultLink ? resultLink.href : null;
@@ -55,47 +54,57 @@ class StackOverflowScraper {
                 throw new Error('No StackOverflow results found');
             }
 
-            // Navigate to the first result
-            await page.goto(firstLink);
-            await page.waitForSelector('.js-post-body', { timeout: 30000 });
+            console.log(`Found result: ${firstLink}`);
 
-            // Scrape answers and additional information
-            const scrapedData = await page.evaluate(() => {
-                const answers = Array.from(document.querySelectorAll('.js-post-body'))
-                    .map(answer => answer.innerText.trim());
-
-                const votes = Array.from(document.querySelectorAll('.js-vote-count'))
-                    .map(vote => parseInt(vote.innerText.trim()) || 0);
-
-                const acceptedAnswer = document.querySelector('.js-accepted-answer');
-                
-                return {
-                    title: document.querySelector('h1')?.textContent.trim(),
-                    question: document.querySelector('.question .js-post-body')?.innerText.trim(),
-                    answers: answers.map((text, index) => ({
-                        text,
-                        votes: votes[index] || 0,
-                        isAccepted: index === 0 && acceptedAnswer !== null
-                    })),
-                    tags: Array.from(document.querySelectorAll('.post-tag'))
-                        .map(tag => tag.textContent.trim())
-                };
-            });
+            // Prepare the data structure for external API
+            const urlsData = {
+                urls: [firstLink]
+            };
 
             // Prepare the final data
             const outputData = {
                 metadata: {
                     scrapeDate: new Date().toISOString(),
-                    sourceUrl: firstLink,
+                    sourceUrl: stackOverflowURL,
                     searchQuery
                 },
-                ...scrapedData
+                data: {
+                    source: 'stackoverflow',
+                    query: searchQuery,
+                    firstLink: firstLink,
+                    urlsData: urlsData
+                }
             };
 
             // Save to JSON file
             const filename = `stackoverflow-${Date.now()}.json`;
             const filepath = path.join(dataDir, filename);
             await fs.writeFile(filepath, JSON.stringify(outputData, null, 2));
+
+            // Send to external crawler API (keep the external API call as requested)
+            try {
+                console.log(`Sending data to http://localhost:8000/crawl...`);
+                const response = await axios.post('http://localhost:8000/crawl', urlsData, {
+                    headers: { 
+                        'Content-Type': 'application/json' 
+                    },
+                    timeout: 10000 // 10 second timeout
+                });
+
+                console.log('External crawler response:', response.data);
+                
+                // Add crawler response to our data
+                outputData.crawlerResponse = response.data;
+                
+                // Re-save with crawler response
+                await fs.writeFile(filepath, JSON.stringify(outputData, null, 2));
+                
+            } catch (crawlerError) {
+                console.warn('External crawler request failed:', crawlerError.message);
+                // Continue without failing the entire scraping process
+                outputData.crawlerError = crawlerError.message;
+                await fs.writeFile(filepath, JSON.stringify(outputData, null, 2));
+            }
 
             return {
                 success: true,
