@@ -14,6 +14,7 @@ const Tesseract = require('tesseract.js');
 
 const aiAnalysisRoutes = require('./routes/aiAnalysis');
 
+const axios = require('axios');
 
 
 const app = express();
@@ -637,7 +638,6 @@ app.post('/api/cleanup', async (req, res) => {
     }
 });
 
-// NEW: Batch scraping endpoint for multiple CVEs
 app.post('/api/scrape/batch', async (req, res) => {
     const { cveList, sources } = req.body;
 
@@ -679,9 +679,11 @@ app.post('/api/scrape/batch', async (req, res) => {
 
                     switch (source) {
                         case 'snyk':
+                            console.log(`Scraping Snyk for ${cve}...`);
                             scrapeResult = await snykScraper.scrapeSnyk(cve, dataDir);
                             break;
                         case 'stackoverflow':
+                            console.log(`Scraping StackOverflow for ${cve}...`);
                             scrapeResult = await stackoverflowScraper.scrapeStackOverflow(`${cve} vulnerability`, dataDir);
                             break;
                         default:
@@ -689,32 +691,75 @@ app.post('/api/scrape/batch', async (req, res) => {
                             continue;
                     }
 
+                    console.log(`Scrape result for ${cve} from ${source}:`, {
+                        success: scrapeResult?.success,
+                        hasData: !!scrapeResult?.data,
+                        hasResults: !!scrapeResult?.data?.results,
+                        resultsLength: scrapeResult?.data?.results?.length,
+                        hasUrlsData: !!scrapeResult?.data?.urlsData,
+                        urlsDataLength: scrapeResult?.data?.urlsData?.urls?.length
+                    });
+
                     if (scrapeResult && scrapeResult.success) {
+                        // URL extraction with multiple fallbacks
+                        let extractedUrls = [];
+                        
+                        // Method 1: Check data.results (Snyk format)
+                        if (scrapeResult.data?.results && Array.isArray(scrapeResult.data.results)) {
+                            extractedUrls = [...scrapeResult.data.results];
+                            console.log(`✓ Extracted ${extractedUrls.length} URLs from data.results`);
+                        }
+                        // Method 2: Check data.urlsData.urls (Enhanced Snyk format)
+                        else if (scrapeResult.data?.urlsData?.urls && Array.isArray(scrapeResult.data.urlsData.urls)) {
+                            extractedUrls = [...scrapeResult.data.urlsData.urls];
+                            console.log(`✓ Extracted ${extractedUrls.length} URLs from data.urlsData.urls`);
+                        }
+                        // Method 3: Check data.firstLink (StackOverflow format)
+                        else if (scrapeResult.data?.firstLink) {
+                            extractedUrls = [scrapeResult.data.firstLink];
+                            console.log(`✓ Extracted 1 URL from data.firstLink`);
+                        }
+                        // Method 4: Check if URLs are at the root level
+                        else if (scrapeResult.urls && Array.isArray(scrapeResult.urls)) {
+                            extractedUrls = [...scrapeResult.urls];
+                            console.log(`✓ Extracted ${extractedUrls.length} URLs from root urls`);
+                        }
+                        else {
+                            console.warn(`⚠ No URLs found in scrape result for ${cve} from ${source}`);
+                        }
+
                         cveResult.sources[source] = {
                             success: true,
                             savedAs: scrapeResult.savedAs,
-                            urlCount: scrapeResult.data?.results?.length || 0
+                            urlCount: extractedUrls.length
                         };
 
-                        // Collect URLs with CVE and source tags
-                        if (scrapeResult.data?.results) {
-                            const taggedUrls = scrapeResult.data.results.map(url => `${url}#${cve}-${source}`);
+                        if (extractedUrls.length > 0) {
+                            // FIXED: Clean URLs first, then tag properly
+                            const cleanUrls = extractedUrls.map(url => {
+                                // Remove any existing hash tags first
+                                return url.split('#')[0];
+                            });
+                            
+                            // Tag URLs with CVE and source information
+                            const taggedUrls = cleanUrls.map(url => `${url}#${cve}-${source}`);
                             cveResult.urls.push(...taggedUrls);
                             allUrls.push(...taggedUrls);
-                        } else if (scrapeResult.data?.firstLink) {
-                            const taggedUrl = `${scrapeResult.data.firstLink}#${cve}-${source}`;
-                            cveResult.urls.push(taggedUrl);
-                            allUrls.push(taggedUrl);
+                            
+                            console.log(`✓ Added ${taggedUrls.length} tagged URLs to collection`);
+                            console.log('Sample clean URL:', cleanUrls[0]);
+                            console.log('Sample tagged URL:', taggedUrls[0]);
                         }
                     } else {
+                        console.log(`✗ Scraping failed for ${cve} from ${source}`);
                         cveResult.sources[source] = {
                             success: false,
-                            error: 'No results returned'
+                            error: scrapeResult?.error || 'Scraping returned unsuccessful status'
                         };
                     }
 
                 } catch (sourceError) {
-                    console.error(`Error scraping ${source} for ${cve}:`, sourceError);
+                    console.error(`✗ Error scraping ${source} for ${cve}:`, sourceError.message);
                     cveResult.sources[source] = {
                         success: false,
                         error: sourceError.message
@@ -728,8 +773,10 @@ app.post('/api/scrape/batch', async (req, res) => {
             cveResult.success = cveResult.urls.length > 0;
             if (cveResult.success) {
                 successCount++;
+                console.log(`✓ CVE ${cve} processed successfully with ${cveResult.urls.length} URLs`);
             } else {
                 errorCount++;
+                console.log(`✗ CVE ${cve} failed - no URLs collected`);
             }
 
             results.push(cveResult);
@@ -740,7 +787,12 @@ app.post('/api/scrape/batch', async (req, res) => {
             }
         }
 
-        console.log(`Batch scraping completed. ${successCount} successful, ${errorCount} failed. Total URLs: ${allUrls.length}`);
+        console.log(`\n=== BATCH SCRAPING SUMMARY ===`);
+        console.log(`Total CVEs: ${cveList.length}`);
+        console.log(`Successful: ${successCount}`);
+        console.log(`Failed: ${errorCount}`);
+        console.log(`Total URLs collected: ${allUrls.length}`);
+        console.log(`URLs: ${allUrls.slice(0, 3).join(', ')}${allUrls.length > 3 ? '...' : ''}`);
 
         // Save batch summary
         const batchSummary = {
@@ -764,32 +816,61 @@ app.post('/api/scrape/batch', async (req, res) => {
         const batchFilepath = path.join(dataDir, batchFilename);
         await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
 
-        // Send all URLs to external crawler if we have any
+        // FIXED: Simple crawler API call with correct payload
         let crawlerResult = null;
-        if (allUrls.length > 0) {
-            try {
-                console.log(`Sending ${allUrls.length} URLs to external crawler...`);
-                const crawlerResponse = await axios.post('http://localhost:8000/crawl', {
-                    urls: allUrls
-                }, {
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 30000
-                });
+        let crawlerError = null;
 
-                crawlerResult = crawlerResponse.data;
-                console.log('External crawler response:', crawlerResult);
+        console.log(`\n=== CALLING CRAWLER API ===`);
+        console.log(`Attempting to call http://localhost:8000/crawl with ${allUrls.length} URLs...`);
 
-                // Update batch summary with crawler result
-                batchSummary.crawlerResult = crawlerResult;
-                await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
+        try {
+            // FIXED: Simple payload - only URLs, no metadata
+            const crawlerPayload = {
+                urls: allUrls
+            };
 
-            } catch (crawlerError) {
-                console.warn('External crawler request failed:', crawlerError.message);
-                batchSummary.crawlerError = crawlerError.message;
-                await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
-            }
+            console.log('Crawler payload preview:', {
+                urlCount: crawlerPayload.urls.length,
+                firstUrl: crawlerPayload.urls[0],
+                sampleUrls: crawlerPayload.urls.slice(0, 3)
+            });
+
+            console.log('Actual payload being sent:', crawlerPayload);
+
+            const crawlerResponse = await axios.post('http://localhost:8000/crawl', crawlerPayload, {
+                headers: { 
+                    'Content-Type': 'application/json'
+                },
+                timeout: 30000 // 30 second timeout
+            });
+
+            crawlerResult = crawlerResponse.data;
+            console.log('✓ Crawler API call successful:', crawlerResult);
+
+            // Update batch summary with crawler result
+            batchSummary.crawlerResult = crawlerResult;
+            batchSummary.crawlerCalled = true;
+            batchSummary.crawlerTimestamp = new Date().toISOString();
+            await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
+
+        } catch (crawlerErr) {
+            crawlerError = crawlerErr.message;
+            console.error('✗ Crawler API call failed:', crawlerError);
+            console.error('Error details:', {
+                message: crawlerErr.message,
+                code: crawlerErr.code,
+                status: crawlerErr.response?.status,
+                responseData: crawlerErr.response?.data
+            });
+            
+            // Still save the error in batch summary
+            batchSummary.crawlerError = crawlerError;
+            batchSummary.crawlerCalled = true;
+            batchSummary.crawlerTimestamp = new Date().toISOString();
+            await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
         }
 
+        // Return detailed response
         res.json({
             success: true,
             summary: {
@@ -797,19 +878,33 @@ app.post('/api/scrape/batch', async (req, res) => {
                 successfulCVEs: successCount,
                 failedCVEs: errorCount,
                 totalUrls: allUrls.length,
-                sources: sources
+                sources: sources,
+                crawlerCalled: crawlerResult !== null || crawlerError !== null,
+                crawlerSuccess: crawlerResult !== null,
+                crawlerError: crawlerError
             },
             data: batchSummary,
             savedAs: batchFilename,
             crawlerResult: crawlerResult,
-            allUrls: allUrls
+            allUrls: allUrls,
+            debug: {
+                resultsBreakdown: results.map(r => ({
+                    cve: r.cve,
+                    urlCount: r.urls.length,
+                    sourcesAttempted: Object.keys(r.sources),
+                    sourcesSuccessful: Object.keys(r.sources).filter(s => r.sources[s].success)
+                })),
+                crawlerAttempted: true,
+                crawlerUrl: 'http://localhost:8000/crawl'
+            }
         });
 
     } catch (error) {
-        console.error('Batch scraping error:', error);
+        console.error('✗ Batch scraping error:', error);
         res.status(500).json({
             error: 'Batch scraping failed',
-            message: error.message
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });
