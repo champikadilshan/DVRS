@@ -637,7 +637,182 @@ app.post('/api/cleanup', async (req, res) => {
     }
 });
 
+// NEW: Batch scraping endpoint for multiple CVEs
+app.post('/api/scrape/batch', async (req, res) => {
+    const { cveList, sources } = req.body;
 
+    if (!cveList || !Array.isArray(cveList) || cveList.length === 0) {
+        return res.status(400).json({ error: 'CVE list is required and must be a non-empty array' });
+    }
+
+    if (!sources || !Array.isArray(sources) || sources.length === 0) {
+        return res.status(400).json({ error: 'Sources list is required and must be a non-empty array' });
+    }
+
+    console.log(`Starting batch scraping for ${cveList.length} CVEs with sources:`, sources);
+
+    try {
+        await ensureBrowserInstalled();
+        const { dataDir } = await ensureDataDirectory();
+        
+        const allUrls = [];
+        const results = [];
+        let successCount = 0;
+        let errorCount = 0;
+
+        // Process each CVE
+        for (let i = 0; i < cveList.length; i++) {
+            const cve = cveList[i];
+            console.log(`Processing CVE ${i + 1}/${cveList.length}: ${cve}`);
+
+            const cveResult = {
+                cve: cve,
+                sources: {},
+                urls: [],
+                success: false
+            };
+
+            // Process each source for this CVE
+            for (const source of sources) {
+                try {
+                    let scrapeResult;
+
+                    switch (source) {
+                        case 'snyk':
+                            scrapeResult = await snykScraper.scrapeSnyk(cve, dataDir);
+                            break;
+                        case 'stackoverflow':
+                            scrapeResult = await stackoverflowScraper.scrapeStackOverflow(`${cve} vulnerability`, dataDir);
+                            break;
+                        default:
+                            console.warn(`Unsupported source: ${source}`);
+                            continue;
+                    }
+
+                    if (scrapeResult && scrapeResult.success) {
+                        cveResult.sources[source] = {
+                            success: true,
+                            savedAs: scrapeResult.savedAs,
+                            urlCount: scrapeResult.data?.results?.length || 0
+                        };
+
+                        // Collect URLs with CVE and source tags
+                        if (scrapeResult.data?.results) {
+                            const taggedUrls = scrapeResult.data.results.map(url => `${url}#${cve}-${source}`);
+                            cveResult.urls.push(...taggedUrls);
+                            allUrls.push(...taggedUrls);
+                        } else if (scrapeResult.data?.firstLink) {
+                            const taggedUrl = `${scrapeResult.data.firstLink}#${cve}-${source}`;
+                            cveResult.urls.push(taggedUrl);
+                            allUrls.push(taggedUrl);
+                        }
+                    } else {
+                        cveResult.sources[source] = {
+                            success: false,
+                            error: 'No results returned'
+                        };
+                    }
+
+                } catch (sourceError) {
+                    console.error(`Error scraping ${source} for ${cve}:`, sourceError);
+                    cveResult.sources[source] = {
+                        success: false,
+                        error: sourceError.message
+                    };
+                }
+
+                // Add delay between source requests
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+
+            cveResult.success = cveResult.urls.length > 0;
+            if (cveResult.success) {
+                successCount++;
+            } else {
+                errorCount++;
+            }
+
+            results.push(cveResult);
+
+            // Add delay between CVEs
+            if (i < cveList.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+        }
+
+        console.log(`Batch scraping completed. ${successCount} successful, ${errorCount} failed. Total URLs: ${allUrls.length}`);
+
+        // Save batch summary
+        const batchSummary = {
+            metadata: {
+                batchDate: new Date().toISOString(),
+                totalCVEs: cveList.length,
+                successfulCVEs: successCount,
+                failedCVEs: errorCount,
+                sources: sources,
+                totalUrls: allUrls.length
+            },
+            data: {
+                cveList: cveList,
+                sources: sources,
+                results: results,
+                allUrls: allUrls
+            }
+        };
+
+        const batchFilename = `batch-scraping-${Date.now()}.json`;
+        const batchFilepath = path.join(dataDir, batchFilename);
+        await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
+
+        // Send all URLs to external crawler if we have any
+        let crawlerResult = null;
+        if (allUrls.length > 0) {
+            try {
+                console.log(`Sending ${allUrls.length} URLs to external crawler...`);
+                const crawlerResponse = await axios.post('http://localhost:8000/crawl', {
+                    urls: allUrls
+                }, {
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 30000
+                });
+
+                crawlerResult = crawlerResponse.data;
+                console.log('External crawler response:', crawlerResult);
+
+                // Update batch summary with crawler result
+                batchSummary.crawlerResult = crawlerResult;
+                await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
+
+            } catch (crawlerError) {
+                console.warn('External crawler request failed:', crawlerError.message);
+                batchSummary.crawlerError = crawlerError.message;
+                await fs.writeFile(batchFilepath, JSON.stringify(batchSummary, null, 2));
+            }
+        }
+
+        res.json({
+            success: true,
+            summary: {
+                totalCVEs: cveList.length,
+                successfulCVEs: successCount,
+                failedCVEs: errorCount,
+                totalUrls: allUrls.length,
+                sources: sources
+            },
+            data: batchSummary,
+            savedAs: batchFilename,
+            crawlerResult: crawlerResult,
+            allUrls: allUrls
+        });
+
+    } catch (error) {
+        console.error('Batch scraping error:', error);
+        res.status(500).json({
+            error: 'Batch scraping failed',
+            message: error.message
+        });
+    }
+});
 
 // Add this endpoint to your server.js
 
