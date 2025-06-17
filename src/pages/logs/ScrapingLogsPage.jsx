@@ -25,6 +25,88 @@ import axios from 'axios';
 import { aiAnalysisService } from '../../services/ai/aiAnalysisService';
 import AIProcessingLogs from '../../components/ai/AIProcessingLogs';
 
+// Enhanced CVE extraction function
+const extractCVEs = (logs) => {
+  const cvePattern = /CVE-\d{4}-\d+/gi;
+  const cves = new Set();
+  
+  // Function to safely extract CVEs from any string
+  const extractFromString = (str) => {
+    if (typeof str === 'string') {
+      const matches = str.match(cvePattern) || [];
+      matches.forEach(cve => cves.add(cve.toUpperCase()));
+    }
+  };
+
+  // 1. First priority: Check if we have stored batch data from sessionStorage
+  try {
+    const batchData = sessionStorage.getItem('batchScrapingData');
+    if (batchData) {
+      const parsed = JSON.parse(batchData);
+      if (parsed.cveList && Array.isArray(parsed.cveList)) {
+        parsed.cveList.forEach(cve => cves.add(cve.toUpperCase()));
+        console.log('Found CVEs from batch data:', parsed.cveList);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse batch data from sessionStorage:', e);
+  }
+
+  // 2. Extract from logs data structure
+  if (logs?.data?.cveList && Array.isArray(logs.data.cveList)) {
+    logs.data.cveList.forEach(cve => cves.add(cve.toUpperCase()));
+  }
+
+  // 3. Extract from metadata
+  extractFromString(logs?.metadata?.searchQuery);
+  extractFromString(logs?.metadata?.cveCode);
+
+  // 4. Extract from data fields
+  extractFromString(logs?.data?.query);
+  extractFromString(logs?.data?.cve);
+  extractFromString(logs?.searchQuery);
+
+  // 5. Extract from findings
+  if (logs?.data?.findings && Array.isArray(logs.data.findings)) {
+    logs.data.findings.forEach(finding => {
+      extractFromString(finding.name);
+      extractFromString(finding.description);
+      extractFromString(finding.title);
+    });
+  }
+
+  // 6. Extract from results array
+  if (logs?.data?.results && Array.isArray(logs.data.results)) {
+    logs.data.results.forEach(result => {
+      extractFromString(result.cve);
+      if (result.urls && Array.isArray(result.urls)) {
+        result.urls.forEach(url => extractFromString(url));
+      }
+    });
+  }
+
+  // 7. Extract from URLs
+  if (logs?.data?.allUrls && Array.isArray(logs.data.allUrls)) {
+    logs.data.allUrls.forEach(url => extractFromString(url));
+  }
+
+  // 8. Extract from analysis text
+  extractFromString(logs?.analysis);
+
+  // 9. Extract from any raw text content
+  extractFromString(logs?.data?.rawOcrText);
+  extractFromString(logs?.data?.title);
+  extractFromString(logs?.data?.description);
+
+  // 10. Extract from source URLs
+  extractFromString(logs?.sourceUrl);
+  extractFromString(logs?.metadata?.sourceUrl);
+
+  const result = Array.from(cves);
+  console.log('Total CVEs extracted:', result);
+  return result;
+};
+
 // Drag and Drop Upload Component
 const DragDropUpload = ({ selectedFile, onFileSelect, validateFile }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -57,7 +139,6 @@ const DragDropUpload = ({ selectedFile, onFileSelect, validateFile }) => {
     const file = files[0];
     if (file) {
       if (validateFile(file)) {
-        // Create a synthetic event object to match the expected format
         const syntheticEvent = {
           target: {
             files: [file]
@@ -78,7 +159,6 @@ const DragDropUpload = ({ selectedFile, onFileSelect, validateFile }) => {
 
   return (
     <div className="space-y-2">
-      {/* Drag & Drop Zone */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -143,7 +223,6 @@ const DragDropUpload = ({ selectedFile, onFileSelect, validateFile }) => {
         </div>
       </div>
 
-      {/* Traditional File Picker Button (Backup) */}
       <div className="flex justify-center">
         <label htmlFor="dockerfile-upload" className="cursor-pointer">
           <div className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 transition-colors">
@@ -153,7 +232,6 @@ const DragDropUpload = ({ selectedFile, onFileSelect, validateFile }) => {
         </label>
       </div>
 
-      {/* Drag Error Display */}
       {dragError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-2">
           <p className="text-sm text-red-800">{dragError}</p>
@@ -201,84 +279,14 @@ const InfoCard = ({ icon: Icon, title, value }) => (
   </div>
 );
 
-// New component for Dockerfile fixing
+// ENHANCED: Dockerfile fixer with better CVE extraction
 const DockerfileFixer = ({ logs }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isFixing, setIsFixing] = useState(false);
   const [fixResult, setFixResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const extractCVEs = (logs) => {
-    const cves = [];
-    const cvePattern = /CVE-\d{4}-\d+/gi;
-    
-    // Extract from search query (most common for Stack Overflow scrapes)
-    if (logs?.searchQuery) {
-      const searchCVEs = logs.searchQuery.match(cvePattern) || [];
-      cves.push(...searchCVEs);
-    }
-    
-    // Extract from metadata search query
-    if (logs?.metadata?.searchQuery) {
-      const metaCVEs = logs.metadata.searchQuery.match(cvePattern) || [];
-      cves.push(...metaCVEs);
-    }
-    
-    // Try to extract from findings in data
-    if (logs?.data?.findings) {
-      logs.data.findings.forEach(finding => {
-        const foundCVEs = finding.name?.match(cvePattern) || [];
-        cves.push(...foundCVEs);
-        
-        if (finding.description) {
-          const descCVEs = finding.description.match(cvePattern) || [];
-          cves.push(...descCVEs);
-        }
-      });
-    }
-
-    // Extract from title or any text content
-    if (logs?.data?.title) {
-      const titleCVEs = logs.data.title.match(cvePattern) || [];
-      cves.push(...titleCVEs);
-    }
-
-    // Extract from answers if it's Stack Overflow data
-    if (logs?.data?.answers) {
-      logs.data.answers.forEach(answer => {
-        if (answer.text) {
-          const answerCVEs = answer.text.match(cvePattern) || [];
-          cves.push(...answerCVEs);
-        }
-      });
-    }
-
-    // Also try from AI analysis results if available
-    if (logs?.analysis) {
-      const analysisCVEs = logs.analysis.match(cvePattern) || [];
-      cves.push(...analysisCVEs);
-    }
-
-    // Extract from any raw OCR text
-    if (logs?.data?.rawOcrText) {
-      const ocrCVEs = logs.data.rawOcrText.match(cvePattern) || [];
-      cves.push(...ocrCVEs);
-    }
-
-    // Extract from source URL if it contains CVE
-    if (logs?.sourceUrl) {
-      const urlCVEs = logs.sourceUrl.match(cvePattern) || [];
-      cves.push(...urlCVEs);
-    }
-
-    if (logs?.metadata?.sourceUrl) {
-      const metaUrlCVEs = logs.metadata.sourceUrl.match(cvePattern) || [];
-      cves.push(...metaUrlCVEs);
-    }
-
-    // Remove duplicates and return
-    return [...new Set(cves)];
-  };
+  const cves = extractCVEs(logs);
 
   const validateDockerfile = (file) => {
     const fileName = file.name.toLowerCase();
@@ -299,7 +307,6 @@ const DockerfileFixer = ({ logs }) => {
       } else {
         setError('Please select a valid Dockerfile (Dockerfile, *.dockerfile, *.docker)');
         setSelectedFile(null);
-        // Clear the input value to allow re-selection
         event.target.value = '';
       }
     }
@@ -319,9 +326,6 @@ const DockerfileFixer = ({ logs }) => {
       // Read the Dockerfile content
       const fileContent = await selectedFile.text();
       
-      // Extract CVEs from logs
-      const cves = extractCVEs(logs);
-      
       if (cves.length === 0) {
         setError('No CVEs found in the analysis to fix');
         setIsFixing(false);
@@ -331,7 +335,7 @@ const DockerfileFixer = ({ logs }) => {
       // Prepare the prompt
       const prompt = `${fileContent.trim()} , This docker file have these CVEs [${cves.join(', ')}] , can you fix it and give me the updated docker file ?. If and only if there are no solutions for the CVE, you can add a base image from chainguard or rapidfort.`;
 
-      // Send request directly to your Python API
+      // Send request to Python API
       const response = await axios.post('http://localhost:8001/api/query', {
         prompt: prompt,
         user_id: 'postman-test'
@@ -352,8 +356,6 @@ const DockerfileFixer = ({ logs }) => {
     }
   };
 
-  const cves = extractCVEs(logs);
-
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
@@ -365,7 +367,7 @@ const DockerfileFixer = ({ logs }) => {
       
       <div className="p-4 space-y-4">
         {/* CVE Information */}
-        {cves.length > 0 && (
+        {cves.length > 0 ? (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <h4 className="text-sm font-medium text-blue-900 mb-2">
               Found CVEs to fix: {cves.length}
@@ -381,17 +383,41 @@ const DockerfileFixer = ({ logs }) => {
               ))}
             </div>
           </div>
-        )}
-
-        {cves.length === 0 && (
+        ) : (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <p className="text-sm text-yellow-800">
-              No CVEs found in the current analysis. The fix might not be specific to vulnerabilities.
-            </p>
+            <div className="flex items-center">
+              <AlertTriangle className="w-4 h-4 text-yellow-600 mr-2" />
+              <div>
+                <p className="text-sm text-yellow-800 font-medium">No CVEs found in the current analysis</p>
+                <p className="text-xs text-yellow-700 mt-1">
+                  This could mean the analysis is still processing, no vulnerabilities were found, or the CVE data wasn't properly extracted.
+                </p>
+              </div>
+            </div>
+            
+            {/* Debug information in development */}
+            {process.env.NODE_ENV === 'development' && (
+              <details className="mt-2">
+                <summary className="text-xs text-yellow-600 cursor-pointer">Debug: Show logs structure</summary>
+                <pre className="text-xs text-yellow-600 mt-1 overflow-auto max-h-32 bg-yellow-100 p-2 rounded">
+                  {JSON.stringify({
+                    hasData: !!logs?.data,
+                    hasCveList: !!logs?.data?.cveList,
+                    cveListLength: logs?.data?.cveList?.length,
+                    hasResults: !!logs?.data?.results,
+                    resultsLength: logs?.data?.results?.length,
+                    hasFindings: !!logs?.data?.findings,
+                    findingsLength: logs?.data?.findings?.length,
+                    searchQuery: logs?.metadata?.searchQuery,
+                    query: logs?.data?.query
+                  }, null, 2)}
+                </pre>
+              </details>
+            )}
           </div>
         )}
 
-        {/* File Upload with Drag & Drop */}
+        {/* File Upload */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">
             Upload Dockerfile
@@ -406,10 +432,10 @@ const DockerfileFixer = ({ logs }) => {
         {/* Fix Button */}
         <button
           onClick={handleFixDockerfile}
-          disabled={!selectedFile || isFixing}
+          disabled={!selectedFile || isFixing || cves.length === 0}
           className={`
             w-full flex items-center justify-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
-            ${selectedFile && !isFixing
+            ${selectedFile && !isFixing && cves.length > 0
               ? 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }
@@ -420,10 +446,15 @@ const DockerfileFixer = ({ logs }) => {
               <Loader className="w-4 h-4 mr-2 animate-spin" />
               Fixing Dockerfile...
             </>
+          ) : cves.length === 0 ? (
+            <>
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              No CVEs to Fix
+            </>
           ) : (
             <>
               <Wrench className="w-4 h-4 mr-2" />
-              Fix Dockerfile
+              Fix Dockerfile for {cves.length} CVE{cves.length !== 1 ? 's' : ''}
             </>
           )}
         </button>
@@ -506,7 +537,7 @@ const ScrapingLogsPage = () => {
 
       setProcessingLogs(prev => [...prev, {
         type: 'success',
-        message: 'Webscraping completed successfully',
+        message: 'AI Analysis completed successfully',
         timestamp: new Date()
       }]);
     } catch (err) {
@@ -650,7 +681,7 @@ const ScrapingLogsPage = () => {
           <InfoCard 
             icon={Globe}
             title="Source Type"
-            value={logs?.data?.source || 'Official Documentation'}
+            value={logs?.data?.source || 'Batch Processing'}
           />
           <InfoCard 
             icon={Clock}
@@ -660,14 +691,58 @@ const ScrapingLogsPage = () => {
           <InfoCard 
             icon={Calendar}
             title="Scan Date"
-            value={formatTimestamp(logs?.metadata?.scrapeDate)}
+            value={formatTimestamp(logs?.metadata?.scrapeDate || logs?.metadata?.batchDate)}
           />
           <InfoCard 
             icon={Search}
-            title="Results Found"
-            value={logs?.data?.resultsCount}
+            title="CVEs Processed"
+            value={logs?.data?.cveList?.length || logs?.metadata?.totalCVEs || 'N/A'}
           />
         </div>
+
+        {/* Enhanced CVE Summary Card */}
+        {logs?.data?.cveList && (
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+              <AlertTriangle className="w-4 h-4 mr-2 text-orange-500" />
+              CVEs Processed ({logs.data.cveList.length})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {logs.data.cveList.map((cve, index) => (
+                <span 
+                  key={index}
+                  className="inline-block bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full"
+                >
+                  {cve}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Batch Results Summary */}
+        {logs?.data?.results && (
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Batch Processing Results</h3>
+            <div className="space-y-2">
+              {logs.data.results.map((result, index) => (
+                <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                  <div className="flex items-center">
+                    <span className="font-mono text-sm text-gray-700">{result.cve}</span>
+                    {result.success ? (
+                      <CheckCircle className="w-4 h-4 text-green-500 ml-2" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {result.urls?.length || 0} URLs collected
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {aiResult && (
           <CollapsibleSection 
@@ -746,10 +821,34 @@ const ScrapingLogsPage = () => {
                     {logs.sourceUrl}
                   </a>
                 )}
+                {logs?.data?.allUrls && logs.data.allUrls.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-600 mb-2">Collected URLs ({logs.data.allUrls.length}):</p>
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {logs.data.allUrls.slice(0, 10).map((url, index) => (
+                        <a
+                          key={index}
+                          href={url.split('#')[0]} // Remove tag for actual link
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:text-blue-800 flex items-center break-all"
+                        >
+                          <Globe className="w-3 h-3 mr-1 flex-shrink-0" />
+                          {url.length > 60 ? `${url.substring(0, 60)}...` : url}
+                        </a>
+                      ))}
+                      {logs.data.allUrls.length > 10 && (
+                        <p className="text-xs text-gray-500">
+                          ...and {logs.data.allUrls.length - 10} more URLs
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </CollapsibleSection>
 
-            {/* NEW: Add Dockerfile Fixer below Source URLs */}
+            {/* ENHANCED: Dockerfile Fixer with better CVE detection */}
             <DockerfileFixer logs={logs} />
           </div>
 

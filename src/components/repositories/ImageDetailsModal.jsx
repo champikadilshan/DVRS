@@ -1,4 +1,4 @@
-// src/components/repositories/ImageDetailsModal.jsx - MODIFIED VERSION
+// src/components/repositories/ImageDetailsModal.jsx - FIXED VERSION
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -185,22 +185,34 @@ const ImageDetailsModal = ({
 
   const findings = scanResults?.[image?.imageDigest]?.findings || [];
 
-  // Extract CVE codes from findings
+  // FIXED: Better CVE extraction
   const extractCVECodes = useCallback(() => {
     const cvePattern = /CVE-\d{4}-\d+/gi;
-    const cves = [];
+    const cves = new Set(); // Use Set to avoid duplicates
     
+    // Extract from finding names and descriptions
     findings.forEach(finding => {
-      const foundCVEs = finding.name?.match(cvePattern) || [];
-      cves.push(...foundCVEs);
+      // From finding name
+      if (finding.name) {
+        const nameCVEs = finding.name.match(cvePattern) || [];
+        nameCVEs.forEach(cve => cves.add(cve.toUpperCase()));
+      }
       
+      // From finding description
       if (finding.description) {
         const descCVEs = finding.description.match(cvePattern) || [];
-        cves.push(...descCVEs);
+        descCVEs.forEach(cve => cves.add(cve.toUpperCase()));
+      }
+      
+      // Sometimes CVE is in the URI
+      if (finding.uri) {
+        const uriCVEs = finding.uri.match(cvePattern) || [];
+        uriCVEs.forEach(cve => cves.add(cve.toUpperCase()));
       }
     });
     
-    return [...new Set(cves)]; // Remove duplicates
+    console.log('Extracted CVEs:', Array.from(cves));
+    return Array.from(cves);
   }, [findings]);
 
   const availableCVEs = extractCVECodes();
@@ -257,41 +269,7 @@ const ImageDetailsModal = ({
     }
   };
 
-  // Scrape single CVE for selected sources
-  const scrapeCVE = async (cve, sources) => {
-    const urls = [];
-    
-    for (const source of sources) {
-      try {
-        let result;
-        
-        if (source === 'snyk') {
-          result = await vulnerabilityScraper.scrapeSnyk(cve);
-        } else if (source === 'stackoverflow') {
-          result = await vulnerabilityScraper.scrapeStackOverflow(`${cve} vulnerability`);
-        } else if (source === 'official') {
-          // For official, we'll need the finding with URI
-          const finding = findings.find(f => f.name.includes(cve));
-          if (finding?.uri) {
-            result = await vulnerabilityScraper.scrapeVulnerabilityDetails(finding.uri);
-          }
-        }
-        
-        // Extract URLs from result
-        if (result?.data?.results) {
-          urls.push(...result.data.results.map(url => `${url}-${cve}`));
-        } else if (result?.data?.firstLink) {
-          urls.push(`${result.data.firstLink}-${cve}`);
-        }
-        
-      } catch (error) {
-        console.error(`Error scraping ${source} for ${cve}:`, error);
-      }
-    }
-    
-    return urls;
-  };
-
+  // FIXED: Enhanced batch scraping with proper error handling
   const handleBatchScrape = async () => {
     if (selectedCVEs.size === 0) {
       setScraperError('Please select at least one CVE');
@@ -313,28 +291,49 @@ const ImageDetailsModal = ({
     try {
       console.log('Starting batch scraping for:', cveArray, 'with sources:', selectedSources);
       
-      // Use the new batch scraping service
+      // Use the batch scraping service
       const result = await vulnerabilityScraper.batchScrapeCVEs(cveArray, selectedSources);
       
+      console.log('Batch scraping result:', result);
+      
       if (result.success) {
-        setCollectedUrls(result.allUrls || []);
+        const urlsCollected = result.allUrls || [];
+        setCollectedUrls(urlsCollected);
         
-        console.log('Batch scraping completed successfully:', result);
-        console.log('Total URLs collected:', result.allUrls?.length || 0);
+        console.log('URLs collected:', urlsCollected.length);
         
-        // Navigate to the logs page with the batch result ID
+        // Create enhanced data to pass to logs page
+        const enhancedData = {
+          ...result.data,
+          cveList: cveArray,
+          selectedSources: selectedSources,
+          findings: findings,
+          repositoryName: repositoryName,
+          imageTag: image?.imageTag,
+          imageDigest: image?.imageDigest,
+          batchSummary: {
+            totalCVEs: cveArray.length,
+            selectedSources: selectedSources,
+            urlsCollected: urlsCollected.length,
+            timestamp: new Date().toISOString()
+          }
+        };
+        
+        // Store the enhanced data in sessionStorage for the logs page
+        sessionStorage.setItem('batchScrapingData', JSON.stringify(enhancedData));
+        
+        // Navigate to logs page
         if (result.savedAs) {
-          const logId = result.savedAs.split('.')[0]; // Remove .json extension
+          const logId = result.savedAs.split('.')[0];
           onClose();
           navigate(`/logs/${logId}`);
         } else {
-          // Fallback: create a simple log ID
           const logId = `batch-${Date.now()}`;
           onClose();
           navigate(`/logs/${logId}`);
         }
       } else {
-        throw new Error('Batch scraping completed but returned unsuccessful status');
+        throw new Error(result.message || 'Batch scraping completed but returned unsuccessful status');
       }
       
     } catch (error) {
@@ -384,8 +383,27 @@ const ImageDetailsModal = ({
           {/* Content */}
           <div className="overflow-y-auto p-6 max-h-[calc(90vh-8rem)] space-y-6">
             
+            {/* Debug: Show extracted CVEs */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <h4 className="text-sm font-medium text-yellow-800 mb-2">Debug: CVE Extraction</h4>
+                <p className="text-xs text-yellow-700">
+                  Total findings: {findings.length}
+                </p>
+                <p className="text-xs text-yellow-700">
+                  Extracted CVEs: {availableCVEs.join(', ') || 'None found'}
+                </p>
+                <details className="mt-2">
+                  <summary className="text-xs text-yellow-700 cursor-pointer">Show findings details</summary>
+                  <pre className="text-xs text-yellow-600 mt-1 overflow-auto max-h-32">
+                    {JSON.stringify(findings.map(f => ({ name: f.name, description: f.description?.substring(0, 100) })), null, 2)}
+                  </pre>
+                </details>
+              </div>
+            )}
+            
             {/* Batch Processing Section */}
-            {availableCVEs.length > 0 && (
+            {availableCVEs.length > 0 ? (
               <div className="bg-blue-50/50 rounded-lg p-6 border border-blue-200/50">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-medium text-gray-900 flex items-center">
@@ -450,7 +468,7 @@ const ImageDetailsModal = ({
                   <SourceSelector
                     selectedSources={selectedSources}
                     onSourceToggle={handleSourceToggle}
-                    finding={{}} // Empty finding for batch mode
+                    finding={{}}
                     disabled={isBatchProcessing}
                   />
                 </div>
@@ -469,7 +487,7 @@ const ImageDetailsModal = ({
                     <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
                       <div 
                         className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                        style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
                       ></div>
                     </div>
                     {batchProgress.currentCVE && (
@@ -519,6 +537,23 @@ const ImageDetailsModal = ({
                   </div>
                 )}
               </div>
+            ) : (
+              <div className="bg-yellow-50/50 rounded-lg p-6 border border-yellow-200/50">
+                <div className="flex items-center">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600 mr-2" />
+                  <div>
+                    <h3 className="text-lg font-medium text-yellow-800">No CVEs Found</h3>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      No CVE codes were detected in the vulnerability findings. This could mean:
+                    </p>
+                    <ul className="text-sm text-yellow-700 mt-2 list-disc list-inside">
+                      <li>The vulnerabilities don't have assigned CVE numbers yet</li>
+                      <li>The CVE codes are in a different format</li>
+                      <li>The scan results are clean (no vulnerabilities)</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Error Display */}
@@ -531,7 +566,7 @@ const ImageDetailsModal = ({
               </Alert>
             )}
 
-            {/* Individual Findings List (existing functionality) */}
+            {/* Individual Findings List */}
             <div className="space-y-4">
               <h3 className="text-lg font-medium text-gray-900">Individual CVE Details</h3>
               {findings.map((finding) => (
